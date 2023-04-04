@@ -13,10 +13,10 @@ let songFeedbackCallback: (triggerName: string) => void = () => {};
 
 mqttClient.subscribe('trigger', (err: Error, granted: ISubscriptionGrant[]) => {
     mqttClient.on('message', (topic: string, payload: Buffer) => {
-        console.log(payload.toString());
+        console.log({ payload: payload.toString()});
         const triggerName = JSON.parse(payload.toString()).trigger_name;
         songFeedbackCallback(triggerName);
-        if(!triggerName) {
+        if(!triggerName && latestBackground !== BackgroundModes.Off) {
             playBackground(latestBackground);
         }
         console.log('got trigger', { triggerName });
@@ -45,8 +45,9 @@ app.use('/song/:songName', async (req: express.Request, res: express.Response) =
 
     const { songName } = req.params;
 
-    if (songName !== 'nyan') {
-        return res.status(404).send('currently only "nyan" is supported');
+    const supported_songs = ['nyan', 'req', 'overthinker'];
+    if (!supported_songs.includes(songName)) {
+        return res.status(404).send(`currently only ${supported_songs} is supported`);
     }
 
     const songReceivedPromise = new Promise<void>((resolve, reject) => {
@@ -70,7 +71,7 @@ app.use('/song/:songName', async (req: express.Request, res: express.Response) =
     }, async () => {
         console.log('kivsee tools done');
         await songReceivedPromise;
-        console.log('finished playing song', { songName });
+        console.log('done starting song', { songName });
         res.sendStatus(200);
     });
 
