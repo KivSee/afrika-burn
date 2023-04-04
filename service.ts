@@ -5,11 +5,11 @@ import { BackgroundModes } from './types';
 export const playBackground = async (mode: BackgroundModes) => {
     switch (mode) {
         case BackgroundModes.Off:
-            await axios.post(`http://${RASP_HOST}:8083/stop`);
+            return await axios.post(`http://${RASP_HOST}:8083/stop`);
         case BackgroundModes.Party:
-            await axios.post(`http://${RASP_HOST}:8083/trigger/purim`);
+            return await axios.post(`http://${RASP_HOST}:8083/trigger/purim`);
         case BackgroundModes.Peacock:
-            await axios.post(`http://${RASP_HOST}:8083/song/peacock/play`);
+            return await axios.post(`http://${RASP_HOST}:8083/song/peacock/play`);
     }
 
 }
