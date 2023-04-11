@@ -13,3 +13,7 @@ export const playBackground = async (mode: BackgroundModes) => {
     }
 
 }
+
+export const playSong = async (songName: string) => {
+    return await axios.post(`http://${RASP_HOST}:8083/song/${songName}/play`);
+}

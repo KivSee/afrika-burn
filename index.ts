@@ -1,9 +1,8 @@
 import express from 'express';
-import { exec } from 'child_process';
 import mqtt, { ISubscriptionGrant } from 'mqtt';
 import { BackgroundModes } from './types';
-import { playBackground } from './service';
-import { KIVSEE_TOOLS_DIR, PORT, RASP_HOST } from './config';
+import { playBackground, playSong } from './service';
+import { PORT, RASP_HOST } from './config';
 
 const app = express();
 const mqttClient  = mqtt.connect(`mqtt://${RASP_HOST}`);
@@ -65,16 +64,13 @@ app.use('/song/:songName', async (req: express.Request, res: express.Response) =
         }    
     });
 
-    console.log('executing kivsee tools');
-    exec(`pipenv run python main.py -m seq -t ${songName}`, {
-        cwd: KIVSEE_TOOLS_DIR
-    }, async () => {
-        console.log('kivsee tools done');
-        await songReceivedPromise;
-        console.log('done starting song', { songName });
-        res.sendStatus(200);
-    });
+    console.log('sending song request to player');
+    await playSong(songName);
+    console.log('awaiting response from player');
+    await songReceivedPromise;
+    console.log('got resposne from player');
 
+    res.sendStatus(200);
 });
 
 app.listen(PORT, () => console.log(`listening on port ${PORT}`));
