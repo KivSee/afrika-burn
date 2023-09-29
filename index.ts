@@ -1,21 +1,19 @@
 import express from 'express';
 import mqtt, { ISubscriptionGrant } from 'mqtt';
-import { BackgroundModes } from './types';
-import { playBackground, playSong } from './service';
-import { PORT, RASP_HOST } from './config';
+import { AudioTypes } from './types';
+import { playSong } from './service';
+import { BACK_TIMEOUT_MINS, PORT, RASP_HOST } from './config';
+import { State, getState, setNewState } from './state';
 
 const app = express();
 const mqttClient = mqtt.connect(`mqtt://${RASP_HOST}`);
 
-let latestBackground = BackgroundModes.Peacock;
-let isPlayingSong = false;
+const supported_songs = ['req', 'overthinker', 'sandstorm'];
 
 mqttClient.on('connect', () => {
     console.log('got connect signal from mqtt');
-    if(!isPlayingSong) {
-        console.log('playing background on first connect');
-        setBackground(latestBackground);
-    }
+    console.log('playing background on first connect');
+    setSong("peacock", AudioTypes.Background);
 });
 
 mqttClient.subscribe(['trigger', 'rfid/chip'], (err: Error, granted: ISubscriptionGrant[]) => {
@@ -34,95 +32,99 @@ mqttClient.on('message', (topic: string, payload: Buffer) => {
 
 const handleTrigger = async (payload: any) => {
     console.log('got trigger message', { payload: payload.toString() });
-    const triggerName = JSON.parse(payload.toString()).trigger_name;
-    if (!triggerName && latestBackground !== BackgroundModes.Off) {
-        setBackground(latestBackground);
-    }
-    console.log('got trigger', { triggerName });
-};
-
-const handleRfid = async (payload: any) => {
-    console.log('got rfid message', { payload: payload.toString() });
-    if (isPlayingSong) {
-        console.log('already playing a song. ignoring rfid');
+    const isPlaying = !!JSON.parse(payload.toString()).trigger_name;
+    if (isPlaying) {
         return;
     }
 
-    const message = JSON.parse(payload.toString());
-
-    const { song } = message;
-    switch (song) {
-        case 1:
-            return await setSong('req');
-        case 2:
-            return await setSong('sandstorm');
-        case 3:
-            return await setSong('overthinker');
-        case 4:
-            return await setBackground(BackgroundModes.Off);
-        case 5:
-            return await setBackground(BackgroundModes.Calm);
-        case 6:
-            return await setBackground(BackgroundModes.Party);
-        case 7:
-            return await setBackground(BackgroundModes.Peacock);
-        default:
-            console.log('got unknown song. ignoring it', { song });
+    const { audioType, backStartTime } = getState();
+    if (isBackgroundOver(backStartTime)) {
+        console.log('background loop timed out. playing song');
+        const randSong = supported_songs[Math.floor(Math.random() * supported_songs.length)];
+        await setSong(randSong, AudioTypes.Song);
+        return;
     }
+
+    switch (audioType) {
+        case AudioTypes.Interaction:
+            console.log('audio was interaction speech. playing song');
+            const randSong = supported_songs[Math.floor(Math.random() * supported_songs.length)];
+            await setSong(randSong, AudioTypes.Song);
+            return;
+        case AudioTypes.Song:
+            console.log('audio was song. playing advertisment speech');
+            await setSong("speech_advertisment", AudioTypes.Motivational);
+            return;
+        case AudioTypes.Motivational:
+            console.log('audio was motivational speech. playing background');
+            await setSong("peacock", AudioTypes.Background);
+            return;
+        case AudioTypes.Background:
+            console.log('audio was background. playing motivational speech');
+            await setSong("speech_motivational", AudioTypes.Motivational);
+            return;
+    }
+};
+
+const isBackgroundOver = (backStartTime?: Date) => {
+    if (!backStartTime) {
+        return false;
+    }
+    const now = new Date();
+    const diff = now.getTime() - backStartTime.getTime();
+    const minutes = Math.floor(diff / 1000 / 60);
+    return minutes > BACK_TIMEOUT_MINS;
 }
 
-app.use('/background/:mode', async (req: express.Request, res: express.Response) => {
-    const { mode } = req.params;
-    const modeEnum = mode === BackgroundModes.Off ? BackgroundModes.Off :
-        mode === BackgroundModes.Peacock ? BackgroundModes.Peacock :
-            mode === BackgroundModes.Party ? BackgroundModes.Party :
-                mode === BackgroundModes.Calm ? BackgroundModes.Calm :
-                    null;
-
-    if (!modeEnum) {
-        return res.status(404).send(`illegal mode "${mode}"`);
+const handleRfid = async (payload: any) => {
+    console.log('got rfid message', { payload: payload.toString() });
+    const state = getState();
+    if (!state.isInterruptable) {
+        console.log('not interruptable. ignoring rfid');
+        return;
     }
 
-    await setBackground(modeEnum);
-
-    res.sendStatus(200);
-});
+    await setSong("speech_rfid", AudioTypes.Interaction);
+    console.log('got rfid, playing speech', { payload: payload.toString() });
+}
 
 app.use('/song/:songName', async (req: express.Request, res: express.Response) => {
 
     const { songName } = req.params;
 
-    const supported_songs = ['req', 'overthinker', 'sandstorm'];
     if (!supported_songs.includes(songName)) {
         return res.status(404).send(`currently only ${supported_songs} is supported`);
     }
 
-    await setSong(songName);
+    await setSong(songName, AudioTypes.Song);
 
     res.sendStatus(200);
 });
 
-const setBackground = async (mode: BackgroundModes) => {
-    latestBackground = mode;
-    try {
-        playBackground(mode);
-    } catch (err) {
-        console.log('failed to play background', { err });
-    }
-    isPlayingSong = false;
-};
-
-const setSong = async (songName: string) => {
+const setSong = async (songName: string, audioType: AudioTypes) => {
     console.log('sending song request to player');
     try {
         await playSong(songName);
-        isPlayingSong = true;
-        console.log('started playing song', { songName });
+        let newStartTime: Date | undefined;
+        if (audioType === AudioTypes.Background || audioType === AudioTypes.Motivational) {
+            let { backStartTime: previousBackStartTime } = getState();
+            if (!previousBackStartTime) {
+                newStartTime = new Date();
+            } else {
+                newStartTime = previousBackStartTime;
+            }
+        } else {
+            newStartTime = undefined;
+        }
+
+        setNewState(new State(songName, audioType, newStartTime));
+        console.log('started playing song', { songName, audioType });
     } catch (err) {
-        console.log('failed to play song', { err, songName });
+        console.log('failed to play song', { err, songName, audioType });
     }
 };
 
+
 app.listen(PORT, () => console.log(`listening on port ${PORT}`));
-console.log('started afrika burn script');
+console.log('started tavasi midburn script');
 

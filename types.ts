@@ -1,8 +1,6 @@
-
-export enum BackgroundModes {
-    Off = 'off',
-    Peacock = 'peacock',
-    Party = 'party',
-    Calm = 'calm'
+export enum AudioTypes {
+    Motivational = 'motivational',
+    Interaction = 'interaction',
+    Song = 'song',
+    Background = 'background'
 }
-
