@@ -5,5 +5,6 @@ axiosRetry(axios, { retries: 10, retryDelay: () => 5000 });
 
 
 export const playSong = async (songName: string) => {
-    return await axios.post(`http://${RASP_HOST}:8083/song/${songName}/play`);
+    const resp = await axios.post(`http://${RASP_HOST}:8083/song/${songName}/play`);
+    return resp.data;
 }

@@ -27,7 +27,7 @@ export class State {
     }
 }
 
-let state: State;
+let state: State = new State('none', AudioTypes.Background);
 
 export const setNewState = (newState: State) => {
     state = newState;
