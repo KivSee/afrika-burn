@@ -16,13 +16,14 @@ mqttClient.on('connect', () => {
     setSong("peacock", AudioTypes.Background);
 });
 
-mqttClient.subscribe(['trigger', 'rfid/chip'], (err: Error, granted: ISubscriptionGrant[]) => {
+mqttClient.subscribe(['trigger', 'rfid/chip', 'button'], (err: Error, granted: ISubscriptionGrant[]) => {
 });
 
 mqttClient.on('message', (topic: string, payload: Buffer) => {
     switch (topic) {
         case 'trigger':
             return handleTrigger(payload);
+        case 'button':
         case 'rfid/chip':
             return handleRfid(payload);
         default:
@@ -52,8 +53,8 @@ const handleTrigger = async (payload: any) => {
             await setSong(randSong, AudioTypes.Song);
             return;
         case AudioTypes.Song:
-            console.log('audio was song. playing advertisment speech');
-            await setSong("speech_advertisment", AudioTypes.Motivational);
+            console.log('audio was song. playing advertisement speech');
+            await setSong("speech_advertisement", AudioTypes.Motivational);
             return;
         case AudioTypes.Motivational:
             console.log('audio was motivational speech. playing background');
